@@ -5,7 +5,6 @@ const { shouldScore } = require('../filter/filter');
 
 const client = new Anthropic();
 
-// Profil candidat — mis en cache côté API (même contenu à chaque appel)
 const SYSTEM_PROMPT = `Tu es un assistant qui évalue la pertinence d'offres d'emploi pour un candidat.
 
 Profil du candidat :
@@ -53,13 +52,13 @@ async function scoreJob(job) {
   ].join('\n');
 
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5',
+    model: 'claude-haiku-4-5', // haiku suffit pour du scoring, 5x moins cher qu'opus
     max_tokens: 256,
     system: [
       {
         type: 'text',
         text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' }, // cache le profil entre les appels
+        cache_control: { type: 'ephemeral' }, // le profil est identique à chaque appel → cache
       },
     ],
     output_config: {
@@ -100,17 +99,16 @@ async function scoreUnscoredJobs() {
     UPDATE jobs SET score = ?, score_reason = ? WHERE id = ?
   `);
 
-  // Pré-filtrage sans appel API
+  // pré-filtre sans appel API — les rejetés prennent score=0 pour ne plus repasser
   const eligible = jobs.filter(shouldScore);
-  const filtered = jobs.length - eligible.length;
+  const filteredJobs = jobs.filter(j => !shouldScore(j));
 
-  if (filtered > 0) {
-    // Marque les offres hors-scope avec score 0 pour ne pas les retraiter
-    const filteredIds = jobs.filter(j => !shouldScore(j)).map(j => j.id);
-    for (const id of filteredIds) {
-      update.run(0, 'Hors scope (filtré automatiquement)', id);
-    }
-    console.log(`[Scorer] ${filtered} offres filtrées sans appel API.`);
+  for (const j of filteredJobs) {
+    update.run(0, 'Hors scope (filtré automatiquement)', j.id);
+  }
+
+  if (filteredJobs.length > 0) {
+    console.log(`[Scorer] ${filteredJobs.length} offres filtrées sans appel API.`);
   }
 
   if (eligible.length === 0) {
@@ -132,7 +130,7 @@ async function scoreUnscoredJobs() {
     }
   }
 
-  console.log(`[Scorer] Terminé : ${scored} scorées, ${filtered} filtrées sur ${jobs.length} total.`);
+  console.log(`[Scorer] Terminé : ${scored} scorées, ${filteredJobs.length} filtrées sur ${jobs.length} total.`);
   return scored;
 }
 

@@ -8,10 +8,8 @@ const { scoreUnscoredJobs } = require('./scorer/scorer');
 const app = express();
 app.use(express.json());
 
-// Initialise la DB au démarrage
 getDb();
 
-// ── Routes ────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.get('/jobs', (req, res) => {
@@ -31,7 +29,6 @@ app.get('/jobs/:id', (req, res) => {
   res.json(job);
 });
 
-// Scrape + score manuel (pour tests)
 app.post('/scrape/indeed', async (req, res) => {
   try {
     const new_jobs = await scrapeIndeed();
@@ -42,7 +39,6 @@ app.post('/scrape/indeed', async (req, res) => {
   }
 });
 
-// Reset scores (dev uniquement)
 app.post('/dev/reset-scores', (req, res) => {
   const db = getDb();
   const result = db.prepare('UPDATE jobs SET score = NULL, score_reason = NULL').run();
@@ -66,14 +62,11 @@ app.post('/score', async (req, res) => {
   }
 });
 
-// ── Cron : scrape + score quotidien à 8h ─────────────────
 cron.schedule('0 8 * * *', async () => {
-  console.log('[CRON] Démarrage du scraping quotidien...');
   await scrapeIndeed();
   await scoreUnscoredJobs();
 });
 
-// ── Démarrage ─────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`JobRadar backend démarré sur http://localhost:${PORT}`);
