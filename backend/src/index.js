@@ -3,6 +3,7 @@ const express = require('express');
 const cron = require('node-cron');
 const { getDb } = require('./db/database');
 const { scrapeIndeed } = require('./scrapers/indeed');
+const { scrapeLinkedIn } = require('./scrapers/linkedin');
 const { scoreUnscoredJobs } = require('./scorer/scorer');
 
 const app = express();
@@ -39,6 +40,26 @@ app.post('/scrape/indeed', async (req, res) => {
   }
 });
 
+app.post('/scrape/linkedin', async (req, res) => {
+  try {
+    const new_jobs = await scrapeLinkedIn();
+    const scored = await scoreUnscoredJobs();
+    res.json({ success: true, new_jobs, scored });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/scrape/all', async (req, res) => {
+  try {
+    const [indeed, linkedin] = await Promise.all([scrapeIndeed(), scrapeLinkedIn()]);
+    const scored = await scoreUnscoredJobs();
+    res.json({ success: true, new_jobs: { indeed, linkedin }, scored });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/dev/reset-scores', (req, res) => {
   const db = getDb();
   const result = db.prepare('UPDATE jobs SET score = NULL, score_reason = NULL').run();
@@ -63,7 +84,7 @@ app.post('/score', async (req, res) => {
 });
 
 cron.schedule('0 8 * * *', async () => {
-  await scrapeIndeed();
+  await Promise.all([scrapeIndeed(), scrapeLinkedIn()]);
   await scoreUnscoredJobs();
 });
 

@@ -25,21 +25,6 @@ Critères de scoring :
 
 Pénaliser si le salaire est clairement inférieur à 42k€ ou non précisé sur un poste junior.`;
 
-const SCORE_SCHEMA = {
-  type: 'object',
-  properties: {
-    score: {
-      type: 'integer',
-      description: 'Score de 1 (hors sujet) à 10 (match parfait)',
-    },
-    reason: {
-      type: 'string',
-      description: 'Justification courte en 1-2 phrases',
-    },
-  },
-  required: ['score', 'reason'],
-  additionalProperties: false,
-};
 
 async function scoreJob(job) {
   const content = [
@@ -52,21 +37,15 @@ async function scoreJob(job) {
   ].join('\n');
 
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5', // haiku suffit pour du scoring, 5x moins cher qu'opus
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 256,
     system: [
       {
         type: 'text',
-        text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' }, // le profil est identique à chaque appel → cache
+        text: SYSTEM_PROMPT + '\n\nRéponds UNIQUEMENT en JSON valide, sans markdown ni texte autour : {"score": <entier 1-10>, "reason": "<phrase>"}',
+        cache_control: { type: 'ephemeral' },
       },
     ],
-    output_config: {
-      format: {
-        type: 'json_schema',
-        schema: SCORE_SCHEMA,
-      },
-    },
     messages: [
       {
         role: 'user',
@@ -75,8 +54,9 @@ async function scoreJob(job) {
     ],
   });
 
-  const text = response.content.find(b => b.type === 'text')?.text;
-  if (!text) throw new Error('Réponse vide de Claude');
+  const raw = response.content.find(b => b.type === 'text')?.text;
+  if (!raw) throw new Error('Réponse vide de Claude');
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   return JSON.parse(text);
 }
 
